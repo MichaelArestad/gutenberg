@@ -59,161 +59,171 @@ registerBlockType( 'core/image', {
 	},
 
 	getEditWrapperProps( attributes ) {
-		const { align, width } = attributes;
+		const { align } = attributes;
 		if ( 'left' === align || 'right' === align || 'wide' === align || 'full' === align ) {
-			return { 'data-align': align, 'data-resized': !! width };
+			return { 'data-align': align, 'data-resized': true };
 		}
 	},
 
 	edit( { attributes, setAttributes, focus, setFocus, className } ) {
-		const { url, alt, caption, align, id, href, width, height } = attributes;
-		const updateAlt = ( newAlt ) => setAttributes( { alt: newAlt } );
-		const updateAlignment = ( nextAlign ) => {
-			const extraUpdatedAttributes = [ 'wide', 'full' ].indexOf( nextAlign ) !== -1
-				? { width: undefined, height: undefined }
-				: {};
-			setAttributes( { ...extraUpdatedAttributes, align: nextAlign } );
-		};
-		const onSelectImage = ( media ) => {
-			setAttributes( { url: media.url, alt: media.alt, caption: media.caption, id: media.id } );
-		};
-		const isResizable = [ 'wide', 'full' ].indexOf( align ) === -1;
-		const uploadButtonProps = { isLarge: true };
-		const onSetHref = ( value ) => setAttributes( { href: value } );
-
-		const controls = (
-			focus && (
-				<BlockControls key="controls">
-					<BlockAlignmentToolbar
-						value={ align }
-						onChange={ updateAlignment }
-					/>
-
-					<Toolbar>
-						<li>
-							<MediaUploadButton
-								buttonProps={ {
-									className: 'components-icon-button components-toolbar__control',
-									'aria-label': __( 'Edit image' ),
-								} }
-								onSelect={ onSelectImage }
-								type="image"
-								value={ id }
-							>
-								<Dashicon icon="edit" />
-							</MediaUploadButton>
-						</li>
-						<UrlInputButton onChange={ onSetHref } url={ href } />
-					</Toolbar>
-				</BlockControls>
-			)
-		);
-
-		if ( ! url ) {
-			return [
-				controls,
-				<Placeholder
-					key="placeholder"
-					instructions={ __( 'Drag image here or insert from media library' ) }
-					icon="format-image"
-					label={ __( 'Image' ) }
-					className={ className }>
-					<DropZone
-						onFilesDrop={ ( files ) => {
-							const media = files[ 0 ];
-
-							// Only allow image uploads
-							if ( ! /^image\//.test( media.type ) ) {
-								return;
-							}
-
-							// Use File API to assign temporary URL from upload
-							setAttributes( {
-								url: window.URL.createObjectURL( media ),
-							} );
-
-							// Create upload payload
-							const data = new window.FormData();
-							data.append( 'file', media );
-
-							new wp.api.models.Media().save( null, {
-								data: data,
-								contentType: false,
-							} ).done( ( savedMedia ) => {
-								setAttributes( {
-									id: savedMedia.id,
-									url: savedMedia.source_url,
-								} );
-							} ).fail( () => {
-								// Reset to empty on failure.
-								// TODO: Better failure messaging
-								setAttributes( { url: null } );
-							} );
-						} }
-					/>
-					<MediaUploadButton
-						buttonProps={ uploadButtonProps }
-						onSelect={ onSelectImage }
-						type="image"
-					>
-						{ __( 'Insert from Media Library' ) }
-					</MediaUploadButton>
-				</Placeholder>,
-			];
-		}
-
-		const focusCaption = ( focusValue ) => setFocus( { editable: 'caption', ...focusValue } );
-		const classes = classnames( className, {
-			'is-transient': 0 === url.indexOf( 'blob:' ),
-			'is-resized': !! width,
-		} );
+		const { url, alt, caption, align, id, href, width, height, resized } = attributes;
 
 		// Disable reason: Each block can be selected by clicking on it
 
 		/* eslint-disable jsx-a11y/no-static-element-interactions, jsx-a11y/onclick-has-role, jsx-a11y/click-events-have-key-events */
-		return [
-			controls,
-			focus && (
-				<InspectorControls key="inspector">
-					<BlockDescription>
-						<p>{ __( 'Worth a thousand words.' ) }</p>
-					</BlockDescription>
-					<h3>{ __( 'Image Settings' ) }</h3>
-					<TextControl label={ __( 'Alternate Text' ) } value={ alt } onChange={ updateAlt } />
-				</InspectorControls>
-			),
-			<figure key="image" className={ classes }>
-				<ImageSize src={ url }>
-					{ ( originalWidth = width, originalHeight = height ) => {
-						const img = <img src={ url } alt={ alt } onClick={ setFocus } />;
-						if ( ! isResizable || ! originalHeight || ! originalWidth ) {
-							return img;
+		return (
+			<ImageSize src={ url }>
+				{ ( originalWidth = width, originalHeight = height, containerWidth ) => {
+					const img = <img src={ url } alt={ alt } onClick={ setFocus } />;
+					const updateAlt = ( newAlt ) => setAttributes( { alt: newAlt } );
+					const updateAlignment = ( nextAlign ) => {
+						let extraUpdatedAttributes = {};
+						if ( [ 'wide', 'full' ].indexOf( nextAlign ) !== -1 ) {
+							extraUpdatedAttributes = { width: undefined, height: undefined, resized: undefined };
+						} else if ( [ 'left', 'right' ].indexOf( nextAlign ) !== -1 && ! resized ) {
+							extraUpdatedAttributes = {
+								width: containerWidth / 2,
+								height: containerWidth / 2 * originalHeight / originalWidth,
+							};
+						} else if ( 'center' === nextAlign && ! resized ) {
+							extraUpdatedAttributes = { width: undefined, height: undefined, resized: undefined };
 						}
-						return (
-							<ResizableBox
-								width={ originalWidth }
-								height={ originalHeight }
-								lockAspectRatio
-								onResize={ ( event, { size } ) => setAttributes( size ) }
-							>
-								{ img }
-							</ResizableBox>
-						);
-					} }
-				</ImageSize>
-				{ ( caption && caption.length > 0 ) || !! focus ? (
-					<Editable
-						tagName="figcaption"
-						placeholder={ __( 'Write caption…' ) }
-						value={ caption }
-						focus={ focus && focus.editable === 'caption' ? focus : undefined }
-						onFocus={ focusCaption }
-						onChange={ ( value ) => setAttributes( { caption: value } ) }
-						inlineToolbar
-					/>
-				) : null }
-			</figure>,
-		];
+						setAttributes( { ...extraUpdatedAttributes, align: nextAlign } );
+					};
+					const onSelectImage = ( media ) => {
+						setAttributes( { url: media.url, alt: media.alt, caption: media.caption, id: media.id } );
+					};
+					const isResizable = [ 'wide', 'full' ].indexOf( align ) === -1;
+					const uploadButtonProps = { isLarge: true };
+					const onSetHref = ( value ) => setAttributes( { href: value } );
+					const readyToResize = isResizable && !! originalHeight && !! originalWidth;
+
+					const controls = (
+						focus && (
+							<BlockControls key="controls">
+								<BlockAlignmentToolbar
+									value={ align }
+									onChange={ updateAlignment }
+								/>
+
+								<Toolbar>
+									<li>
+										<MediaUploadButton
+											buttonProps={ {
+												className: 'components-icon-button components-toolbar__control',
+												'aria-label': __( 'Edit image' ),
+											} }
+											onSelect={ onSelectImage }
+											type="image"
+											value={ id }
+										>
+											<Dashicon icon="edit" />
+										</MediaUploadButton>
+									</li>
+									<UrlInputButton onChange={ onSetHref } url={ href } />
+								</Toolbar>
+							</BlockControls>
+						)
+					);
+
+					if ( ! url ) {
+						return [
+							controls,
+							<Placeholder
+								key="placeholder"
+								instructions={ __( 'Drag image here or insert from media library' ) }
+								icon="format-image"
+								label={ __( 'Image' ) }
+								className={ className }>
+								<DropZone
+									onFilesDrop={ ( files ) => {
+										const media = files[ 0 ];
+
+										// Only allow image uploads
+										if ( ! /^image\//.test( media.type ) ) {
+											return;
+										}
+
+										// Use File API to assign temporary URL from upload
+										setAttributes( {
+											url: window.URL.createObjectURL( media ),
+										} );
+
+										// Create upload payload
+										const data = new window.FormData();
+										data.append( 'file', media );
+
+										new wp.api.models.Media().save( null, {
+											data: data,
+											contentType: false,
+										} ).done( ( savedMedia ) => {
+											setAttributes( {
+												id: savedMedia.id,
+												url: savedMedia.source_url,
+											} );
+										} ).fail( () => {
+											// Reset to empty on failure.
+											// TODO: Better failure messaging
+											setAttributes( { url: null } );
+										} );
+									} }
+								/>
+								<MediaUploadButton
+									buttonProps={ uploadButtonProps }
+									onSelect={ onSelectImage }
+									type="image"
+								>
+									{ __( 'Insert from Media Library' ) }
+								</MediaUploadButton>
+							</Placeholder>,
+						];
+					}
+
+					const focusCaption = ( focusValue ) => setFocus( { editable: 'caption', ...focusValue } );
+					const classes = classnames( className, {
+						'is-transient': 0 === url.indexOf( 'blob:' ),
+						'is-resized': !! width,
+					} );
+
+					return [
+						controls,
+						focus && (
+							<InspectorControls key="inspector">
+								<BlockDescription>
+									<p>{ __( 'Worth a thousand words.' ) }</p>
+								</BlockDescription>
+								<h3>{ __( 'Image Settings' ) }</h3>
+								<TextControl label={ __( 'Alternate Text' ) } value={ alt } onChange={ updateAlt } />
+							</InspectorControls>
+						),
+						<figure key="image" className={ classes }>
+							{ ! readyToResize && img }
+							{ readyToResize && (
+								<ResizableBox
+									width={ originalWidth }
+									height={ originalHeight }
+									lockAspectRatio
+									onResize={ ( event, { size } ) => setAttributes( { ...size, resized: true } ) }
+								>
+									{ img }
+								</ResizableBox>
+							) }
+							{ ( caption && caption.length > 0 ) || !! focus ? (
+								<Editable
+									tagName="figcaption"
+									placeholder={ __( 'Write caption…' ) }
+									value={ caption }
+									focus={ focus && focus.editable === 'caption' ? focus : undefined }
+									onFocus={ focusCaption }
+									onChange={ ( value ) => setAttributes( { caption: value } ) }
+									inlineToolbar
+								/>
+							) : null }
+						</figure>,
+					];
+				} }
+			</ImageSize>
+		);
 		/* eslint-enable jsx-a11y/no-static-element-interactions, jsx-a11y/onclick-has-role, jsx-a11y/click-events-have-key-events */
 	},
 
